@@ -1039,8 +1039,8 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         OnCDMAlertEvent
     )
 
-    SLASH_CMDLOOPER1 = "/cmdlooper"
-    SLASH_CMDLOOPER2 = "/cmdl"
+    SLASH_CMDLOOPER1 = "/cdmlooper"
+    SLASH_CMDLOOPER2 = "/cdml"
 
     SlashCmdList["CMDLOOPER"] = function(message)
         local command, args = message:match("^(%S*)%s*(.-)$")
