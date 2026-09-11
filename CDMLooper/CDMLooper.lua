@@ -1043,10 +1043,10 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     SLASH_CMDLOOPER2 = "/cmdl"
 
     SlashCmdList["CMDLOOPER"] = function(message)
-        local command, _ = message:match("^(%S*)%s*(.-)$")
+        local command, args = message:match("^(%S*)%s*(.-)$")
 
         if command == "debug" then
-            local debugCommand, debugArgs = args:match("^(%S*)%s*(.-)$")
+            local debugCommand, _ = args:match("^(%S*)%s*(.-)$")
 
             if debugCommand == "print" then
                 db.DebugPrintSwitch = not db.DebugPrintSwitch
