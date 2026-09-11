@@ -33,6 +33,7 @@ local currentEditCooldownID
 local currentOriginalAlertKey
 
 local layoutManagerHooksInitialized = false
+local advancedCooldownSettingsGuardInitialized = false
 
 -- Alert settings
 
@@ -341,6 +342,86 @@ local function InitializeLayoutManagerHooks()
     )
 
     layoutManagerHooksInitialized = true
+end
+
+local function InitializeCDMCombatGuard()
+    local originalShowUIPanel = CooldownViewerSettings.ShowUIPanel
+
+    CooldownViewerSettings.ShowUIPanel = function(self, ...)
+        if InCombatLockdown() then
+            UIErrorsFrame:AddMessage(
+                "cannot open this with CDMLooper installed while in combat",
+                1, 0.1, 0.1
+            )
+
+            return
+        end
+
+        return originalShowUIPanel(self, ...)
+    end
+end
+
+
+local function UpdateAdvancedCooldownSettingsButton(frame, enabled)
+    if not frame.Button
+        or not frame.Button.Text
+        or frame.Button.Text:GetText() ~= HUD_EDIT_MODE_COOLDOWN_VIEWER_SETTINGS then
+        return
+    end
+
+    if enabled == nil then
+        enabled = not InCombatLockdown()
+    end
+
+    frame.Button:SetEnabled(enabled)
+end
+
+
+local function RefreshAdvancedCooldownSettingsButton(enabled)
+    if not SettingsPanel
+        or not SettingsPanel.Container
+        or not SettingsPanel.Container.SettingsList
+        or not SettingsPanel.Container.SettingsList.ScrollBox then
+        return
+    end
+
+    SettingsPanel.Container.SettingsList.ScrollBox:ForEachFrame(
+        function(frame)
+            UpdateAdvancedCooldownSettingsButton(frame, enabled)
+        end
+    )
+end
+
+
+local function InitializeAdvancedCooldownSettingsGuard()
+    if advancedCooldownSettingsGuardInitialized then
+        RefreshAdvancedCooldownSettingsButton()
+        return
+    end
+
+    if not SettingsPanel
+        or not SettingsPanel.Container
+        or not SettingsPanel.Container.SettingsList
+        or not SettingsPanel.Container.SettingsList.ScrollBox then
+        return
+    end
+
+    local scrollBox = SettingsPanel.Container.SettingsList.ScrollBox
+    local view = scrollBox:GetView()
+
+    if not view then
+        return
+    end
+
+    view:RegisterCallback(
+        ScrollBoxListViewMixin.Event.OnInitializedFrame,
+        function(_, frame)
+            UpdateAdvancedCooldownSettingsButton(frame)
+        end
+    )
+
+    advancedCooldownSettingsGuardInitialized = true
+    RefreshAdvancedCooldownSettingsButton()
 end
 
 
@@ -738,11 +819,31 @@ end
 
 
 -- Runtime handling
+local cdmHiddenForCombat = false
+
+local function onCombatStart()
+    if CooldownViewerSettings
+        and CooldownViewerSettings:IsShown() then
+        CooldownViewerSettings:Hide()
+        cdmHiddenForCombat = true
+    end
+
+    InitializeAdvancedCooldownSettingsGuard()
+    RefreshAdvancedCooldownSettingsButton(false)
+end
+
 
 local function onCombatEnd()
     stopAllLoops()
-end
 
+    if cdmHiddenForCombat then
+        HideUIPanel(CooldownViewerSettings)
+        cdmHiddenForCombat = false
+    end
+
+    InitializeAdvancedCooldownSettingsGuard()
+    RefreshAdvancedCooldownSettingsButton(true)
+end
 
 local function onSpellFired(spellID)
     StopLoop(spellID)
@@ -840,6 +941,8 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
 
     InitializeCDMLooperSettingsBlock()
     InitializeCDMLooperAlertUI()
+    InitializeCDMCombatGuard()
+    InitializeAdvancedCooldownSettingsGuard()
 
     -- The layout manager may not exist yet during ADDON_LOADED.
     -- It will definitely exist by the time the settings window can be used, so try now and again whenever the settings open.
@@ -865,10 +968,10 @@ end
 
 local RUNTIME_EVENT_HANDLERS = {
     ["UNIT_SPELLCAST_SUCCEEDED"] = onUnitSpellcastSucceeded,
+    ["PLAYER_REGEN_DISABLED"] = onCombatStart,
     ["PLAYER_REGEN_ENABLED"] = onCombatEnd,
     ["SOUNDKIT_FINISHED"] = onLoopSoundFinished,
 }
-
 
 local runtimeFrame = CreateFrame("Frame")
 
@@ -879,6 +982,7 @@ runtimeFrame:RegisterUnitEvent(
 
 runtimeFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 runtimeFrame:RegisterEvent("SOUNDKIT_FINISHED")
+runtimeFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 runtimeFrame:SetScript("OnEvent", function(_, event, ...)
     local handler = RUNTIME_EVENT_HANDLERS[event] or NoOp
