@@ -41,13 +41,13 @@ local advancedCooldownSettingsGuardInitialized = false
 local debugLog = {}
 
 local function DebugPrint(...)
-    if db.DebugSwitch then
+    if db.DebugPrintSwitch then
         print(...)
     end
 end
 
 local function DebugLog(...)
-    if db.DebugSwitch then
+    if db.DebugLogSwitch then
         table.insert(debugLog, {
             n = select("#", ...),
             ...
@@ -1001,8 +1001,11 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         LooperDB.PreventOverlappingLoopSounds = true
     end
 
-    if LooperDB.DebugSwitch == nil then
-        LooperDB.DebugSwitch = false
+    if LooperDB.DebugPrintSwitch == nil then
+        LooperDB.DebugPrintSwitch = false
+    end
+    if LooperDB.DebugLogSwitch == nil then
+        LooperDB.DebugLogSwitch = false
     end
 
     LooperDB.Alerts = LooperDB.Alerts or {}
@@ -1043,15 +1046,31 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         local command, _ = message:match("^(%S*)%s*(.-)$")
 
         if command == "debug" then
-            db.DebugSwitch = not db.DebugSwitch
-            print("Debug switch is: " .. (db.DebugSwitch and "on" or "off"))
-            return
+            local debugCommand, debugArgs = args:match("^(%S*)%s*(.-)$")
+
+            if debugCommand == "print" then
+                db.DebugPrintSwitch = not db.DebugPrintSwitch
+                print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+                return
+            end
+            if debugCommand == "log" then
+                db.DebugLogSwitch = not db.DebugLogSwitch
+                print("Debug log switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+                return
+            end
+
+            print(ADDON_NAME, "debug commands")
+            print("/cmdl debug print")
+            print("/cmdl debug log")
         end
 
         if command == "print" then
             PrintDebugLog()
             return
         end
+        print(ADDON_NAME, "commands")
+        print("/cmdl debug")
+        print("/cmdl print")
     end
 end)
 
