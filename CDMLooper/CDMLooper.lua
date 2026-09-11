@@ -1060,8 +1060,8 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
             end
 
             print(ADDON_NAME, "debug commands")
-            print("/cmdl debug print")
-            print("/cmdl debug log")
+            print("/cdml debug print")
+            print("/cdml debug log")
         end
 
         if command == "print" then
@@ -1069,8 +1069,8 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
             return
         end
         print(ADDON_NAME, "commands")
-        print("/cmdl debug")
-        print("/cmdl print")
+        print("/cdml debug")
+        print("/cdml print")
     end
 end)
 
