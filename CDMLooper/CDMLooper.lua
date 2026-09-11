@@ -1062,6 +1062,8 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
             print(ADDON_NAME, "debug commands")
             print("/cdml debug print")
             print("/cdml debug log")
+            print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+            print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
         end
 
         if command == "print" then
