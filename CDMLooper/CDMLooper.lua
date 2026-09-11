@@ -35,6 +35,36 @@ local currentOriginalAlertKey
 local layoutManagerHooksInitialized = false
 local advancedCooldownSettingsGuardInitialized = false
 
+
+-- Debug helper
+
+local debugLog = {}
+
+local function DebugPrint(...)
+    if db.DebugSwitch then
+        print(...)
+    end
+end
+
+local function DebugLog(...)
+    if db.DebugSwitch then
+        table.insert(debugLog, {
+            n = select("#", ...),
+            ...
+        })
+    end
+    DebugPrint(...)
+end
+
+local function PrintDebugLog()
+    print("=== CDMLooper Debug Log ===")
+
+    for i, entry in ipairs(debugLog) do
+        print(i, unpack(entry, 1, entry.n))
+    end
+
+    print("=== End Debug Log ===")
+end
 -- Alert settings
 
 local function GetAlertKey(alert)
@@ -219,6 +249,27 @@ end
 local function InitializeCDMLooperSettingsBlock()
     local settings = CooldownViewerSettings
     local content = settings.CooldownScroll.Content
+    local lastCategory = settings.previousCategory
+
+    -- Blizzard has not built the category list yet.
+    if not lastCategory then
+        return
+    end
+
+    -- Blizzard rebuilds its category frames. We only ever re-anchor our own
+    -- frame to the current final category; Blizzard state is left untouched.
+    if looperSettingsBlock then
+        looperSettingsBlock:ClearAllPoints()
+        looperSettingsBlock:SetPoint(
+            "TOPLEFT",
+            lastCategory,
+            "BOTTOMLEFT",
+            0,
+            -18
+        )
+        looperSettingsBlock:Show()
+        return
+    end
 
     looperSettingsBlock = CreateFrame(
         "Frame",
@@ -230,10 +281,10 @@ local function InitializeCDMLooperSettingsBlock()
     looperSettingsBlock:SetHeight(60)
     looperSettingsBlock:SetPoint(
         "TOPLEFT",
-        content,
-        "TOPLEFT",
+        lastCategory,
+        "BOTTOMLEFT",
         0,
-        0
+        -18
     )
 
     -- Same header style Blizzard uses for Essential Cooldowns etc.
@@ -302,17 +353,7 @@ local function InitializeCDMLooperSettingsBlock()
     end)
 
     UpdateCollapsedState()
-
-    -- Blizzard resets previousCategory every time it rebuilds the category list. Put our block back at the front.
-    hooksecurefunc(
-        settings,
-        "ClearDisplayCategories",
-        function(self)
-            self.previousCategory = looperSettingsBlock
-        end
-    )
 end
-
 
 local function InitializeLayoutManagerHooks()
     if layoutManagerHooksInitialized then
@@ -631,6 +672,7 @@ local function PlayQueuedLoopAlert(pending)
         )
 
         if soundKit then
+            DebugPrint("PlayQueuedLoopAlert", "playing a Alert for", pending.spellID)
             local success, soundHandle = C_Sound.PlaySoundWithOptions({
                 soundKitID = soundKit,
                 uiSoundSubType = pending.soundSubType,
@@ -701,6 +743,11 @@ local function QueueLoopedAlert(
     alert,
     soundSubType
 )
+    if issecretvalue(spellID) then
+        DebugLog("QueueLoopedAlert", "SpellID is secret")
+        return
+    end
+
     -- Already waiting in the queue.
     if queuedLoopAlerts[spellID] then
         return
@@ -731,6 +778,12 @@ end
 
 
 local function StopLoop(spellID)
+    DebugPrint("StopLoop", "spellID secret:", issecretvalue(spellID))
+
+    if issecretvalue(spellID) then
+        return
+    end
+
     local ticker = activeLoops[spellID]
 
     if ticker then
@@ -766,6 +819,7 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
         local start, duration = GetInventoryItemCooldown("player", equipSlot)
 
         if start > 0 and duration > 0 then
+            DebugPrint("OnAvailable", "Trinket still on cooldown")
             return
         end
 
@@ -774,7 +828,20 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
         spellID = cooldownItem:GetSpellID()
     end
 
-    if not spellID then
+    if issecretvalue(spellID) then
+        DebugLog("OnAvailable", "SpellID is secret")
+    else
+        DebugPrint("OnAvailable", "SpellID:", spellID)
+    end
+
+    if issecretvalue(cooldownID) then
+        DebugLog("OnAvailable", "CooldownID is secret")
+        return
+    else
+        DebugPrint("OnAvailable", "CooldownID:", cooldownID)
+    end
+
+    if not spellID or issecretvalue(spellID) then
         return
     end
 
@@ -832,33 +899,21 @@ end
 
 
 -- Runtime handling
-local cdmHiddenForCombat = false
-
-local function onCombatStart()
-    if CooldownViewerSettings
-        and CooldownViewerSettings:IsShown() then
-        CooldownViewerSettings:Hide()
-        cdmHiddenForCombat = true
-    end
-
-    InitializeAdvancedCooldownSettingsGuard()
-    RefreshAdvancedCooldownSettingsButton(false)
-end
-
 
 local function onCombatEnd()
     stopAllLoops()
-
-    if cdmHiddenForCombat then
-        HideUIPanel(CooldownViewerSettings)
-        cdmHiddenForCombat = false
-    end
-
-    InitializeAdvancedCooldownSettingsGuard()
-    RefreshAdvancedCooldownSettingsButton(true)
 end
 
 local function onSpellFired(spellID)
+    local isSecret = issecretvalue(spellID)
+
+    if not isSecret then
+        DebugPrint("onSpellFired", "spellID secret:", isSecret)
+        DebugPrint("onSpellFired", "SpellID:", spellID)
+    else
+        DebugLog("onSpellFired", "spellID secret:", isSecret)
+    end
+
     StopLoop(spellID)
 end
 
@@ -946,16 +1001,17 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         LooperDB.PreventOverlappingLoopSounds = true
     end
 
+    if LooperDB.DebugSwitch == nil then
+        LooperDB.DebugSwitch = false
+    end
+
     LooperDB.Alerts = LooperDB.Alerts or {}
 
     db = LooperDB
 
     CleanupEmptyAlertSettings()
 
-    InitializeCDMLooperSettingsBlock()
     InitializeCDMLooperAlertUI()
-    InitializeCDMCombatGuard()
-    InitializeAdvancedCooldownSettingsGuard()
 
     -- The layout manager may not exist yet during ADDON_LOADED.
     -- It will definitely exist by the time the settings window can be used, so try now and again whenever the settings open.
@@ -965,10 +1021,38 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         InitializeLayoutManagerHooks
     )
 
+    -- Create/re-anchor the CDMLooper block after Blizzard has built the list.
+    -- This does not modify Blizzard's previousCategory state.
+    CooldownViewerSettings:HookScript("OnShow", function()
+        C_Timer.After(0, InitializeCDMLooperSettingsBlock)
+    end)
+
+    hooksecurefunc(CooldownViewerSettings, "ClearDisplayCategories", function()
+        C_Timer.After(0, InitializeCDMLooperSettingsBlock)
+    end)
+
     hooksecurefunc(
         "CooldownViewerAlert_PlayAlert",
         OnCDMAlertEvent
     )
+
+    SLASH_CMDLOOPER1 = "/cmdlooper"
+    SLASH_CMDLOOPER2 = "/cmdl"
+
+    SlashCmdList["CMDLOOPER"] = function(message)
+        local command, _ = message:match("^(%S*)%s*(.-)$")
+
+        if command == "debug" then
+            db.DebugSwitch = not db.DebugSwitch
+            print("Debug switch is: " .. (db.DebugSwitch and "on" or "off"))
+            return
+        end
+
+        if command == "print" then
+            PrintDebugLog()
+            return
+        end
+    end
 end)
 
 
@@ -981,7 +1065,7 @@ end
 
 local RUNTIME_EVENT_HANDLERS = {
     ["UNIT_SPELLCAST_SUCCEEDED"] = onUnitSpellcastSucceeded,
-    ["PLAYER_REGEN_DISABLED"] = onCombatStart,
+    ["PLAYER_REGEN_DISABLED"] = function() end,
     ["PLAYER_REGEN_ENABLED"] = onCombatEnd,
     ["SOUNDKIT_FINISHED"] = onLoopSoundFinished,
 }
