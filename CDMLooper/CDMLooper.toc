@@ -1,0 +1,9 @@
+## Interface: 120100
+## Title: CDMLooper
+## Notes: Small addon to loop CDM Alerts
+## Author: Alluneve
+## Version: 0.0.1
+## SavedVariables: LooperDB
+## Dependencies: Blizzard_CooldownViewer
+
+CDMLooper.lua
