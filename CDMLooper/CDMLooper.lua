@@ -1055,7 +1055,7 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
             end
             if debugCommand == "log" then
                 db.DebugLogSwitch = not db.DebugLogSwitch
-                print("Debug log switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+                print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
                 return
             end
 
