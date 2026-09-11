@@ -758,8 +758,21 @@ end
 -- CDM alert handling functions
 
 local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
-    local spellID = cooldownItem:GetSpellID()
     local cooldownID = cooldownItem:GetCooldownID()
+    local spellID
+
+    if cooldownItem:IsEquippedItem() then
+        local equipSlot = cooldownItem:GetEquipSlot()
+        local start, duration = GetInventoryItemCooldown("player", equipSlot)
+
+        if start > 0 and duration > 0 then
+            return
+        end
+
+        spellID = cooldownItem:GetBaseSpellID()
+    else
+        spellID = cooldownItem:GetSpellID()
+    end
 
     if not spellID then
         return
