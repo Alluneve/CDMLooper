@@ -903,14 +903,15 @@ end
 local function onSpellFired(spellID)
     local isSecret = issecretvalue(spellID)
 
-    if not isSecret then
-        DebugPrint("onSpellFired", "spellID secret:", isSecret)
-        DebugPrint("onSpellFired", "SpellID:", spellID)
-    else
-        DebugLog("onSpellFired", "spellID secret:", isSecret)
+    if isSecret then
+        DebugLog("onSpellFired", "spellID secret:", true)
+        StopLoop(spellID)
+        return
     end
-
-    StopLoop(spellID)
+    DebugPrint("onSpellFired", "SpellID:", spellID)
+    local baseSpellID = C_Spell.GetBaseSpell(spellID)
+    DebugPrint("onSpellFired", "BaseSpellID:", baseSpellID)
+    StopLoop(baseSpellID)
 end
 
 
