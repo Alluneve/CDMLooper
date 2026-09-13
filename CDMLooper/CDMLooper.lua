@@ -812,7 +812,6 @@ end
 
 local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
     local cooldownID = cooldownItem:GetCooldownID()
-    local spellID
 
     if cooldownItem:IsEquippedItem() then
         local equipSlot = cooldownItem:GetEquipSlot()
@@ -822,11 +821,8 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
             DebugPrint("OnAvailable", "Trinket still on cooldown")
             return
         end
-
-        spellID = cooldownItem:GetBaseSpellID()
-    else
-        spellID = cooldownItem:GetSpellID()
     end
+    local spellID = cooldownItem:GetBaseSpellID()
 
     if issecretvalue(spellID) then
         DebugLog("OnAvailable", "SpellID is secret")
