@@ -1,57 +1,27 @@
-name: Release
+name: Package and release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - '**'
 
-permissions:
-  contents: write
+    paths-ignore:
+      - ".github/**"
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-
-    env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - name: Clone project
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Read version from TOC
-        id: version
-        shell: bash
-        run: |
-          VERSION=$(sed -n 's/^## Version:[[:space:]]*//p' CDMLooper.toc | tr -d '\r')
-
-          if [ -z "$VERSION" ]; then
-            echo "Could not find ## Version in CDMLooper.toc"
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Release version: $VERSION"
-
-      - name: Create release tag
-        shell: bash
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="v$VERSION"
-
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
-            exit 1
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
+          fetch-depth: 0  # gets entire git history, needed for automatic changelogs
 
       - name: Package and release
         uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+#          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+#          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
