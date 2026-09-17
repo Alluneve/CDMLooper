@@ -385,86 +385,6 @@ local function InitializeLayoutManagerHooks()
     layoutManagerHooksInitialized = true
 end
 
-local function InitializeCDMCombatGuard()
-    local originalShowUIPanel = CooldownViewerSettings.ShowUIPanel
-
-    CooldownViewerSettings.ShowUIPanel = function(self, ...)
-        if InCombatLockdown() then
-            UIErrorsFrame:AddMessage(
-                "cannot open this with CDMLooper installed while in combat",
-                1, 0.1, 0.1
-            )
-
-            return
-        end
-
-        return originalShowUIPanel(self, ...)
-    end
-end
-
-
-local function UpdateAdvancedCooldownSettingsButton(frame, enabled)
-    if not frame.Button
-        or not frame.Button.Text
-        or frame.Button.Text:GetText() ~= HUD_EDIT_MODE_COOLDOWN_VIEWER_SETTINGS then
-        return
-    end
-
-    if enabled == nil then
-        enabled = not InCombatLockdown()
-    end
-
-    frame.Button:SetEnabled(enabled)
-end
-
-
-local function RefreshAdvancedCooldownSettingsButton(enabled)
-    if not SettingsPanel
-        or not SettingsPanel.Container
-        or not SettingsPanel.Container.SettingsList
-        or not SettingsPanel.Container.SettingsList.ScrollBox then
-        return
-    end
-
-    SettingsPanel.Container.SettingsList.ScrollBox:ForEachFrame(
-        function(frame)
-            UpdateAdvancedCooldownSettingsButton(frame, enabled)
-        end
-    )
-end
-
-
-local function InitializeAdvancedCooldownSettingsGuard()
-    if advancedCooldownSettingsGuardInitialized then
-        RefreshAdvancedCooldownSettingsButton()
-        return
-    end
-
-    if not SettingsPanel
-        or not SettingsPanel.Container
-        or not SettingsPanel.Container.SettingsList
-        or not SettingsPanel.Container.SettingsList.ScrollBox then
-        return
-    end
-
-    local scrollBox = SettingsPanel.Container.SettingsList.ScrollBox
-    local view = scrollBox:GetView()
-
-    if not view then
-        return
-    end
-
-    view:RegisterCallback(
-        ScrollBoxListViewMixin.Event.OnInitializedFrame,
-        function(_, frame)
-            UpdateAdvancedCooldownSettingsButton(frame)
-        end
-    )
-
-    advancedCooldownSettingsGuardInitialized = true
-    RefreshAdvancedCooldownSettingsButton()
-end
-
 
 local function InitializeCDMLooperAlertUI()
     local editFrame = CooldownViewerSettingsEditAlert
@@ -661,7 +581,6 @@ end
 
 local ProcessPendingLoopAlerts
 
-
 local function PlayQueuedLoopAlert(pending)
     local alertType = CooldownViewerAlert_GetType(pending.alert)
 
@@ -707,7 +626,6 @@ local function PlayQueuedLoopAlert(pending)
     -- Nothing blocking the queue
     return false
 end
-
 
 ProcessPendingLoopAlerts = function()
     -- A tracked loop sound is still playing.
@@ -807,40 +725,12 @@ local function stopAllLoops()
     wipe(queuedLoopAlerts)
 end
 
-
--- CDM alert handling functions
-
-local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
-    local cooldownID = cooldownItem:GetCooldownID()
-
-    if cooldownItem:IsEquippedItem() then
-        local equipSlot = cooldownItem:GetEquipSlot()
-        local start, duration = GetInventoryItemCooldown("player", equipSlot)
-
-        if start > 0 and duration > 0 then
-            DebugPrint("OnAvailable", "Trinket still on cooldown")
-            return
-        end
-    end
-    local spellID = cooldownItem:GetBaseSpellID()
-
-    if issecretvalue(spellID) then
-        DebugLog("OnAvailable", "SpellID is secret")
-    else
-        DebugPrint("OnAvailable", "SpellID:", spellID)
-    end
-
-    if issecretvalue(cooldownID) then
-        DebugLog("OnAvailable", "CooldownID is secret")
-        return
-    else
-        DebugPrint("OnAvailable", "CooldownID:", cooldownID)
-    end
-
-    if not spellID or issecretvalue(spellID) then
-        return
-    end
-
+local function createSound(cooldownID,
+                           spellID,
+                           cooldownItem,
+                           spellName,
+                           alert,
+                           soundSubType)
     local settings = GetAlertSettings(cooldownID, alert)
 
     if not settings or not settings.looping then
@@ -863,34 +753,106 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
     )
 end
 
+local function safeFetchIDs(cooldownItem)
+    local cooldownID = cooldownItem:GetCooldownID()
+    local spellID = cooldownItem:GetBaseSpellID()
+
+    if issecretvalue(spellID) then
+        DebugLog("safeFetchIDs", "SpellID is secret")
+    else
+        DebugPrint("safeFetchIDs", "SpellID:", spellID)
+    end
+
+    if issecretvalue(cooldownID) then
+        DebugLog("safeFetchIDs", "CooldownID is secret")
+    else
+        DebugPrint("safeFetchIDs", "CooldownID:", cooldownID)
+    end
+
+    if not spellID or issecretvalue(spellID) or not cooldownID or issecretvalue(cooldownID) then
+        return nil, nil
+    end
+
+    return spellID, cooldownID
+end
+
+local function NoOp()
+    -- noOperation function
+end
+
+-- CDM alert handling functions
+local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    if cooldownItem:IsEquippedItem() then
+        local equipSlot = cooldownItem:GetEquipSlot()
+        local start, duration = GetInventoryItemCooldown("player", equipSlot)
+
+        if start > 0 and duration > 0 then
+            DebugPrint("OnAvailable", "Trinket still on cooldown")
+            return
+        end
+    end
+    createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+end
+
 
 local function OnPandemicTime(cooldownItem, spellName, alert, soundSubType)
-    -- do nothing on pandemic for now
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
 end
 
 
 local function OnCooldown(cooldownItem, spellName, alert, soundSubType)
-    -- do nothing on cooldown for now
-end
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    if cooldownItem:IsEquippedItem() then
+        local equipSlot = cooldownItem:GetEquipSlot()
+        local start, duration = GetInventoryItemCooldown("player", equipSlot)
 
+        if start > 0 and duration > 0 then
+            DebugPrint("OnCooldown", "Trinket still on cooldown")
+            return
+        end
+    end
+    createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+end
 
 local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
-    -- do nothing on charge gained for now
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    local chargeInfo = C_Spell.GetSpellCharges(spellID)
+    if not chargeInfo then
+        return
+    end
+    if chargeInfo.currentCharges == chargeInfo.maxCharges then
+        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+    end
 end
-
 
 local function OnAuraApplied(cooldownItem, spellName, alert, soundSubType)
-    -- do nothing on aura applied for now
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
 end
-
 
 local function OnAuraRemoved(cooldownItem, spellName, alert, soundSubType)
-    -- do nothing on aura removed for now
-end
-
-
-local function NoOp()
-    -- noOperation function
+    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    if not spellID or not cooldownID then
+        return
+    end
+    createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
 end
 
 
