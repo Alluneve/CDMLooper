@@ -579,6 +579,29 @@ end
 
 -- Loop queue handling
 
+local function safeFetchIDs(cooldownItem)
+    local cooldownID = cooldownItem:GetCooldownID()
+    local spellID = cooldownItem:GetBaseSpellID()
+
+    if issecretvalue(spellID) then
+        DebugLog("safeFetchIDs", "SpellID is secret")
+    else
+        DebugPrint("safeFetchIDs", "SpellID:", spellID)
+    end
+
+    if issecretvalue(cooldownID) then
+        DebugLog("safeFetchIDs", "CooldownID is secret")
+    else
+        DebugPrint("safeFetchIDs", "CooldownID:", cooldownID)
+    end
+
+    if not spellID or issecretvalue(spellID) or not cooldownID or issecretvalue(cooldownID) then
+        return nil, nil
+    end
+
+    return spellID, cooldownID
+end
+
 local ProcessPendingLoopAlerts
 
 local function PlayQueuedLoopAlert(pending)
@@ -610,20 +633,31 @@ local function PlayQueuedLoopAlert(pending)
         end
     end
 
-    -- Visual alerts, TTS, or overlap prevention disabled:
-    -- replay through CDM normally.
+    local spellName = C_Spell.GetSpellName(pending.spellID)
+
+    if not spellName or issecretvalue(spellName) then
+        DebugPrint("PlayQueuedLoopAlert", "No readable spell name")
+        return false
+    end
+
+    DebugPrint("Replay name:", spellName)
+
     replayingAlert = true
 
-    CooldownViewerAlert_PlayAlert(
+    local ok, err = pcall(
+        CooldownViewerAlert_PlayAlert,
         pending.cooldownItem,
-        pending.spellName,
+        spellName,
         pending.alert,
         pending.soundSubType
     )
 
     replayingAlert = false
 
-    -- Nothing blocking the queue
+    if not ok then
+        geterrorhandler()(err)
+    end
+
     return false
 end
 
@@ -742,6 +776,7 @@ local function createSound(cooldownID,
     activeLoops[spellID] = C_Timer.NewTicker(
         settings.interval,
         function()
+            DebugPrint("Loop tick", spellID)
             QueueLoopedAlert(
                 spellID,
                 cooldownItem,
@@ -751,29 +786,6 @@ local function createSound(cooldownID,
             )
         end
     )
-end
-
-local function safeFetchIDs(cooldownItem)
-    local cooldownID = cooldownItem:GetCooldownID()
-    local spellID = cooldownItem:GetBaseSpellID()
-
-    if issecretvalue(spellID) then
-        DebugLog("safeFetchIDs", "SpellID is secret")
-    else
-        DebugPrint("safeFetchIDs", "SpellID:", spellID)
-    end
-
-    if issecretvalue(cooldownID) then
-        DebugLog("safeFetchIDs", "CooldownID is secret")
-    else
-        DebugPrint("safeFetchIDs", "CooldownID:", cooldownID)
-    end
-
-    if not spellID or issecretvalue(spellID) or not cooldownID or issecretvalue(cooldownID) then
-        return nil, nil
-    end
-
-    return spellID, cooldownID
 end
 
 local function NoOp()
@@ -834,7 +846,7 @@ local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
     if not chargeInfo then
         return
     end
-    if chargeInfo.currentCharges == chargeInfo.maxCharges then
+    if not chargeInfo.isActive then
         createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
@@ -911,6 +923,13 @@ local function OnCDMAlertEvent(cooldownItem, spellName, alert, soundSubType)
         return
     end
 
+    DebugPrint(
+        "OnCDMAlertEvent",
+        "cooldownItem:", issecretvalue(cooldownItem) and "<secret>" or cooldownItem,
+        "spellName:", issecretvalue(spellName) and "<secret>" or spellName,
+        "alert:", issecretvalue(alert) and "<secret>" or alert
+    )
+
     -- Ignore preview from the CDM settings item
     if cooldownItem.PlayAlertSample then
         return
@@ -927,6 +946,7 @@ local function OnCDMAlertEvent(cooldownItem, spellName, alert, soundSubType)
     end
 
     local eventType = CooldownViewerAlert_GetEvent(alert)
+    DebugPrint("OnCDMAlertEvent", "eventType:", eventType)
     local handler = CDM_EVENT_HANDLERS[eventType] or NoOp
 
     handler(
@@ -1005,35 +1025,52 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         local command, args = message:match("^(%S*)%s*(.-)$")
 
         if command == "debug" then
-            local debugCommand, _ = args:match("^(%S*)%s*(.-)$")
+            local debugCommand, debugArgs = args:match("^(%S*)%s*(.-)$")
 
-            if debugCommand == "print" then
-                db.DebugPrintSwitch = not db.DebugPrintSwitch
-                print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+            if debugCommand == "switch" then
+                local switchCommand, _ = debugArgs:match("^(%S*)%s*(.-)$")
+                if switchCommand == "log" then
+                    db.DebugLogSwitch = not db.DebugLogSwitch
+                    print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
+                    return
+                end
+                if switchCommand == "print" then
+                    db.DebugPrintSwitch = not db.DebugPrintSwitch
+                    print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
+                    return
+                end
+                print("Debug switch commands")
+                print("/cdml debug switch log")
+                print("/cdml debug switch print")
                 return
             end
-            if debugCommand == "log" then
-                db.DebugLogSwitch = not db.DebugLogSwitch
-                print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
+            if debugCommand == "clear" then
+                wipe(debugLog)
+                print("Debug log cleared.")
+                return
+            end
+            if debugCommand == "alert" then
+                stopAllLoops()
+                print("All active loops stopped.")
+                return
+            end
+            if debugCommand == "print" then
+                PrintDebugLog()
                 return
             end
 
             print(ADDON_NAME, "debug commands")
+            print("/cdml debug switch")
+            print("/cdml debug clear")
+            print("/cdml debug alert")
             print("/cdml debug print")
-            print("/cdml debug log")
             print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
             print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
             return
         end
 
-        if command == "print" then
-            PrintDebugLog()
-            return
-        end
-
         print(ADDON_NAME, "commands")
         print("/cdml debug")
-        print("/cdml print")
     end
 end)
 
