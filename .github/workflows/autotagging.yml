@@ -1,0 +1,83 @@
+name: Bump version and tag
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  version:
+    # Prevent the version-bump commit itself from causing another bump
+    if: ${{ !contains(github.event.head_commit.message, '[skip version bump]') }}
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Bump patch version
+        id: version
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+          toc = Path("CDMLooper/CDMLooper.toc")
+          text = toc.read_text()
+
+          pattern = r"^(## Version:\s*)(\d+)\.(\d+)\.(\d+)\s*$"
+          match = re.search(pattern, text, re.MULTILINE)
+
+          if not match:
+              raise SystemExit("Could not find ## Version: X.Y.Z in TOC")
+
+          major = int(match.group(2))
+          minor = int(match.group(3))
+          patch = int(match.group(4)) + 1
+
+          version = f"{major}.{minor}.{patch}"
+
+          text = re.sub(
+              pattern,
+              rf"\g<1>{version}",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+
+          toc.write_text(text)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+
+          print(f"Bumped version to {version}")
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add CDMLooper/CDMLooper.toc
+          git commit -m "Bump version to $VERSION [skip version bump]"
+          git push origin main
+
+      - name: Create tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists"
+            exit 1
+          fi
+
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
