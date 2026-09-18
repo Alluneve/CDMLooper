@@ -915,9 +915,7 @@ local function OnSpellFired(spellID)
     local isSecret = issecretvalue(spellID)
 
     if isSecret then
-        DebugLog("OnSpellFired", "spellID secret:", true)
-        raceConditionList[spellID] = GetTimePreciseSec() + RACE_CONDITION_TIMER
-        StopLoop(spellID)
+        DebugLog("OnSpellFired", "spellID secret:", true, "quick returning")
         return
     end
     DebugPrint("OnSpellFired", "SpellID:", spellID)
