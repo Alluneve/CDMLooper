@@ -37,8 +37,6 @@ local currentEditCooldownID
 local currentOriginalAlertKey
 
 local layoutManagerHooksInitialized = false
-local advancedCooldownSettingsGuardInitialized = false
-
 
 -- Debug helper
 
