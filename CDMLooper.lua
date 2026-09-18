@@ -7,7 +7,7 @@ local ADDON_NAME = "CDMLooper"
 --AlertEventType.OnAuraApplied
 --AlertEventType.OnAuraRemoved
 
-local BLIZZ_AlertEventType = Enum.CooldownViewerAlertEventType
+local BLIZZ_ALERT_EVENT_TYPE = Enum.CooldownViewerAlertEventType
 
 local db
 local DB_VERSION = 1
@@ -583,20 +583,20 @@ end
 
 -- Loop queue handling
 
-local function safeFetchIDs(cooldownItem)
+local function SafeFetchIDs(cooldownItem)
     local cooldownID = cooldownItem:GetCooldownID()
     local spellID = cooldownItem:GetBaseSpellID()
 
     if issecretvalue(spellID) then
-        DebugLog("safeFetchIDs", "SpellID is secret")
+        DebugLog("SafeFetchIDs", "SpellID is secret")
     else
-        DebugPrint("safeFetchIDs", "SpellID:", spellID)
+        DebugPrint("SafeFetchIDs", "SpellID:", spellID)
     end
 
     if issecretvalue(cooldownID) then
-        DebugLog("safeFetchIDs", "CooldownID is secret")
+        DebugLog("SafeFetchIDs", "CooldownID is secret")
     else
-        DebugPrint("safeFetchIDs", "CooldownID:", cooldownID)
+        DebugPrint("SafeFetchIDs", "CooldownID:", cooldownID)
     end
 
     if not spellID or issecretvalue(spellID) or not cooldownID or issecretvalue(cooldownID) then
@@ -753,7 +753,7 @@ local function StopLoop(spellID)
 end
 
 
-local function stopAllLoops()
+local function StopAllLoops()
     for _, ticker in pairs(activeLoops) do
         ticker:Cancel()
     end
@@ -763,7 +763,7 @@ local function stopAllLoops()
     wipe(queuedLoopAlerts)
 end
 
-local function createSound(cooldownID,
+local function CreateSound(cooldownID,
                            spellID,
                            cooldownItem,
                            spellName,
@@ -802,17 +802,17 @@ local function RaceConditionCleanup()
     end
     local now = GetTimePreciseSec()
 
-    for spellID, supressionTime in pairs(raceConditionList) do
-        if now > supressionTime then
+    for spellID, suppressionTime in pairs(raceConditionList) do
+        if now > suppressionTime then
             raceConditionList[spellID] = nil
         end
     end
 end
 
 local function RaceConditionCheck(spellID)
-    local supressionTime = raceConditionList[spellID]
-    if supressionTime then
-        if supressionTime > GetTimePreciseSec() then
+    local suppressionTime = raceConditionList[spellID]
+    if suppressionTime then
+        if suppressionTime > GetTimePreciseSec() then
             return false
         end
     end
@@ -821,7 +821,7 @@ end
 
 -- CDM alert handling functions
 local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
@@ -835,24 +835,24 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
         end
     end
     if RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 
 local function OnPandemicTime(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 
 local function OnCooldown(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
@@ -866,12 +866,12 @@ local function OnCooldown(cooldownItem, spellName, alert, soundSubType)
         end
     end
     if RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
@@ -880,34 +880,34 @@ local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
         return
     end
     if not chargeInfo.isActive and RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 local function OnAuraApplied(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 local function OnAuraRemoved(cooldownItem, spellName, alert, soundSubType)
-    local spellID, cooldownID = safeFetchIDs(cooldownItem)
+    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        createSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
     end
 end
 
 
 -- Runtime handling
 
-local function onSpellFired(spellID)
+local function OnSpellFired(spellID)
     if not UnitAffectingCombat("player") then
         return
     end
@@ -915,20 +915,20 @@ local function onSpellFired(spellID)
     local isSecret = issecretvalue(spellID)
 
     if isSecret then
-        DebugLog("onSpellFired", "spellID secret:", true)
+        DebugLog("OnSpellFired", "spellID secret:", true)
         raceConditionList[spellID] = GetTimePreciseSec() + RACE_CONDITION_TIMER
         StopLoop(spellID)
         return
     end
-    DebugPrint("onSpellFired", "SpellID:", spellID)
+    DebugPrint("OnSpellFired", "SpellID:", spellID)
     local baseSpellID = C_Spell.GetBaseSpell(spellID)
-    DebugPrint("onSpellFired", "BaseSpellID:", baseSpellID)
+    DebugPrint("OnSpellFired", "BaseSpellID:", baseSpellID)
     raceConditionList[baseSpellID] = GetTimePreciseSec() + RACE_CONDITION_TIMER
     StopLoop(baseSpellID)
 end
 
 
-local function onLoopSoundFinished(soundHandle)
+local function OnLoopSoundFinished(soundHandle)
     -- Ignore SOUNDKIT_FINISHED events belonging to anything else.
     if soundHandle ~= activeLoopSoundHandle then
         return
@@ -945,12 +945,12 @@ end
 -- CDM event handler
 
 local CDM_EVENT_HANDLERS = {
-    [BLIZZ_AlertEventType.Available]     = OnAvailable,
-    [BLIZZ_AlertEventType.PandemicTime]  = OnPandemicTime,
-    [BLIZZ_AlertEventType.OnCooldown]    = OnCooldown,
-    [BLIZZ_AlertEventType.ChargeGained]  = OnChargeGained,
-    [BLIZZ_AlertEventType.OnAuraApplied] = OnAuraApplied,
-    [BLIZZ_AlertEventType.OnAuraRemoved] = OnAuraRemoved,
+    [BLIZZ_ALERT_EVENT_TYPE.Available]     = OnAvailable,
+    [BLIZZ_ALERT_EVENT_TYPE.PandemicTime]  = OnPandemicTime,
+    [BLIZZ_ALERT_EVENT_TYPE.OnCooldown]    = OnCooldown,
+    [BLIZZ_ALERT_EVENT_TYPE.ChargeGained]  = OnChargeGained,
+    [BLIZZ_ALERT_EVENT_TYPE.OnAuraApplied] = OnAuraApplied,
+    [BLIZZ_ALERT_EVENT_TYPE.OnAuraRemoved] = OnAuraRemoved,
 }
 
 
@@ -1089,7 +1089,7 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
                 return
             end
             if debugCommand == "alert" then
-                stopAllLoops()
+                StopAllLoops()
                 print("All active loops stopped.")
                 return
             end
@@ -1116,12 +1116,12 @@ end)
 
 -- Runtime events
 
-local function onUnitSpellcastSucceeded(_, _, spellID)
-    onSpellFired(spellID)
+local function OnUnitSpellcastSucceeded(_, _, spellID)
+    OnSpellFired(spellID)
 end
 
-local function onCombatEnd()
-    stopAllLoops()
+local function OnCombatEnd()
+    StopAllLoops()
     if raceConditionCleanupTicker then
         raceConditionCleanupTicker:Cancel()
         raceConditionCleanupTicker = nil
@@ -1129,7 +1129,7 @@ local function onCombatEnd()
     wipe(raceConditionList)
 end
 
-local function onCombatStart()
+local function OnCombatStart()
     if not raceConditionCleanupTicker then
         raceConditionCleanupTicker = C_Timer.NewTicker(
             60,
@@ -1139,10 +1139,10 @@ local function onCombatStart()
 end
 
 local RUNTIME_EVENT_HANDLERS = {
-    ["UNIT_SPELLCAST_SUCCEEDED"] = onUnitSpellcastSucceeded,
-    ["PLAYER_REGEN_DISABLED"] = onCombatStart,
-    ["PLAYER_REGEN_ENABLED"] = onCombatEnd,
-    ["SOUNDKIT_FINISHED"] = onLoopSoundFinished,
+    ["UNIT_SPELLCAST_SUCCEEDED"] = OnUnitSpellcastSucceeded,
+    ["PLAYER_REGEN_DISABLED"] = OnCombatStart,
+    ["PLAYER_REGEN_ENABLED"] = OnCombatEnd,
+    ["SOUNDKIT_FINISHED"] = OnLoopSoundFinished,
 }
 
 local runtimeFrame = CreateFrame("Frame")
