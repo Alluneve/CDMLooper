@@ -812,6 +812,8 @@ local function RaceConditionCheck(spellID)
     if suppressionTime then
         if suppressionTime > GetTimePreciseSec() then
             return false
+        else
+            raceConditionList[spellID] = nil
         end
     end
     return true
