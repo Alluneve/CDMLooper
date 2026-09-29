@@ -15,10 +15,12 @@ local DB_VERSION = 1
 local DEFAULT_LOOP_INTERVAL = 3
 
 local activeLoops = {}
-local replayingAlert = false
 
+local activeLoopPlaybackType = nil
 local activeLoopSoundHandle = nil
-local activeLoopSoundSpellID = nil
+local activeLoopPlaybackSpellID = nil
+local activeLoopTTSUtteranceID = nil
+local waitingForLoopTTSRequest = false
 
 local pendingLoopAlerts = {}
 local queuedLoopAlerts = {}
@@ -38,16 +40,137 @@ local currentOriginalAlertKey
 
 local layoutManagerHooksInitialized = false
 
--- Debug helper
+-- debug and flight recorder
 
-local debugLog = {}
+local flightRecorderEnabled = BugGrabber ~= nil
+local currentFlightRecorder = {}
+
+local FLIGHT_RECORDER_CAPTURE_SECONDS = 60
+local FLIGHT_RECORDER_POST_TRIGGER_SECONDS = 10
+
+local flightRecorderTriggered = false
+local flightRecorderTriggeredTime = nil
+
+local function RecordFlightEvent(...)
+    if not flightRecorderEnabled then
+        return
+    end
+
+    table.insert(currentFlightRecorder, {
+        timestamp = GetTimePreciseSec(),
+        n = select("#", ...),
+        ...
+    })
+end
+
+local function StoreFlightRecorder()
+    if not flightRecorderEnabled then
+        return
+    end
+
+    local lines = {
+        string.format(
+            "%s Flight Recorder - triggered at %.3f",
+            ADDON_NAME,
+            flightRecorderTriggeredTime
+        )
+    }
+
+    for i, entry in ipairs(currentFlightRecorder) do
+        local values = {}
+
+        for j = 1, entry.n do
+            local value = entry[j]
+
+            if issecretvalue and issecretvalue(value) then
+                values[j] = "<secret>"
+            else
+                values[j] = tostring(value)
+            end
+        end
+
+        table.insert(lines, string.format(
+            "%.3f [%d] %s",
+            entry.timestamp,
+            i,
+            table.concat(values, " ")
+        ))
+    end
+
+    BugGrabber:StoreError({
+        message = table.concat(lines, "\n"),
+        session = BugGrabber:GetSessionId(),
+        time = date("%Y/%m/%d %H:%M:%S"),
+        counter = 1,
+    })
+end
+
+local function FlushCurrentFlightRecorder()
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    flightRecorderTriggered = true
+    flightRecorderTriggeredTime = GetTimePreciseSec()
+
+    C_Timer.After(FLIGHT_RECORDER_POST_TRIGGER_SECONDS, function()
+        StoreFlightRecorder()
+
+        currentFlightRecorder = {}
+        flightRecorderTriggered = false
+        flightRecorderTriggeredTime = nil
+    end)
+end
+
+local function CleanCurrentFlightRecorder()
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    local cutoff =
+        GetTimePreciseSec() - FLIGHT_RECORDER_CAPTURE_SECONDS
+
+    while currentFlightRecorder[1]
+        and currentFlightRecorder[1].timestamp < cutoff
+    do
+        table.remove(currentFlightRecorder, 1)
+    end
+end
+
+local function OnBugGrabbed(_, errorID)
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    local errorObject = BugGrabber:GetErrorByID(errorID)
+
+    if not errorObject then
+        return
+    end
+
+    local message = errorObject.message
+
+    if type(message) ~= "string" then
+        return
+    end
+
+    if issecretvalue and issecretvalue(message) then
+        return
+    end
+
+    if string.find(message, ADDON_NAME, 1, true) then
+        FlushCurrentFlightRecorder()
+    end
+end
 
 local function DebugPrint(...)
+    RecordFlightEvent(...)
     if db.DebugPrintSwitch then
         print(...)
     end
 end
 
+local debugLog = {}
 local function DebugLog(...)
     if db.DebugLogSwitch then
         table.insert(debugLog, {
@@ -608,80 +731,104 @@ local ProcessPendingLoopAlerts
 
 local function PlayQueuedLoopAlert(pending)
     local alertType = CooldownViewerAlert_GetType(pending.alert)
+    local payload = CooldownViewerAlert_GetPayload(pending.alert)
 
-    if db.PreventOverlappingLoopSounds
-        and alertType == Enum.CooldownViewerAlertType.Sound then
-        local soundKit = CooldownViewerAlert_GetPayloadContextData(
-            pending.alert
-        )
-
-        if soundKit then
-            DebugPrint("PlayQueuedLoopAlert", "playing a Alert for", pending.spellID)
-            local success, soundHandle = C_Sound.PlaySoundWithOptions({
-                soundKitID = soundKit,
-                uiSoundSubType = pending.soundSubType,
-                runFinishCallback = true,
-            })
-
-            if success then
-                activeLoopSoundHandle = soundHandle
-                activeLoopSoundSpellID = pending.spellID
-
-                -- Queue must wait for SOUNDKIT_FINISHED
-                return true
-            end
-
-            return false
-        end
-    end
-
-    local spellName = C_Spell.GetSpellName(pending.spellID)
-
-    if not spellName or issecretvalue(spellName) then
-        DebugPrint("PlayQueuedLoopAlert", "No readable spell name")
+    if not alertType or issecretvalue(alertType) then
+        DebugPrint("PlayQueuedLoopAlert", "AlertType is secret")
         return false
     end
 
-    DebugPrint("Replay name:", spellName)
-
-    replayingAlert = true
-
-    local ok, err = pcall(
-        CooldownViewerAlert_PlayAlert,
-        pending.cooldownItem,
-        spellName,
-        pending.alert,
-        pending.soundSubType
-    )
-
-    replayingAlert = false
-
-    if not ok then
-        geterrorhandler()(err)
+    if payload == nil or issecretvalue(payload) then
+        DebugPrint("PlayQueuedLoopAlert", "Payload is secret")
+        return false
     end
 
-    return false
+    if alertType ~= Enum.CooldownViewerAlertType.Sound then
+        return false
+    end
+
+    local success = false
+
+    if payload == Enum.CooldownViewerSound.TextToSpeech then
+        local voiceID =
+            C_TTSSettings.GetVoiceOptionID(Enum.TtsVoiceType.Standard)
+
+        if not voiceID then
+            return false
+        end
+
+        if db.PreventOverlappingLoopSounds then
+            activeLoopPlaybackType = "tts"
+            activeLoopSoundHandle = nil
+            activeLoopPlaybackSpellID = pending.spellID
+            activeLoopTTSUtteranceID = nil
+            waitingForLoopTTSRequest = true
+        end
+
+        C_VoiceChat.SpeakText(
+            voiceID,
+            pending.spellName,
+            C_TTSSettings.GetSpeechRate(),
+            C_TTSSettings.GetSpeechVolume(),
+            not db.PreventOverlappingLoopSounds
+        )
+
+        waitingForLoopTTSRequest = false
+
+        if db.PreventOverlappingLoopSounds
+            and not activeLoopTTSUtteranceID then
+            activeLoopPlaybackType = nil
+            activeLoopPlaybackSpellID = nil
+            success = false
+        else
+            success = true
+        end
+    else
+        local soundKit =
+            CooldownViewerAlert_GetPayloadContextData(pending.alert)
+
+        if not soundKit or issecretvalue(soundKit) then
+            DebugPrint("PlayQueuedLoopAlert", "SoundKit is secret")
+            return false
+        end
+
+        local soundHandle
+
+        success, soundHandle = C_Sound.PlaySoundWithOptions({
+            soundKitID = soundKit,
+            uiSoundSubType = pending.soundSubType,
+            runFinishCallback = db.PreventOverlappingLoopSounds,
+        })
+
+        if success and db.PreventOverlappingLoopSounds then
+            activeLoopPlaybackType = "sound"
+            activeLoopSoundHandle = soundHandle
+            activeLoopPlaybackSpellID = pending.spellID
+            waitingForLoopTTSRequest = false
+        end
+    end
+
+    return success
 end
 
 ProcessPendingLoopAlerts = function()
-    -- A tracked loop sound is still playing.
     if db.PreventOverlappingLoopSounds
-        and activeLoopSoundHandle then
+        and activeLoopPlaybackType then
         return
     end
 
     while #pendingLoopAlerts > 0 do
         local pending = table.remove(pendingLoopAlerts, 1)
 
-        -- Check that this queued entry wasn't cancelled while waiting.
         if queuedLoopAlerts[pending.spellID] == pending then
             queuedLoopAlerts[pending.spellID] = nil
 
-            -- Spell may have been fired while waiting.
             if activeLoops[pending.spellID] then
-                local blocking = PlayQueuedLoopAlert(pending)
+                local success = PlayQueuedLoopAlert(pending)
 
-                if blocking then
+                if success
+                    and db.PreventOverlappingLoopSounds
+                    and activeLoopPlaybackType then
                     return
                 end
             end
@@ -693,7 +840,6 @@ end
 local function QueueLoopedAlert(
     spellID,
     cooldownItem,
-    spellName,
     alert,
     soundSubType
 )
@@ -709,8 +855,14 @@ local function QueueLoopedAlert(
 
     -- Don't queue another reminder for this spell while its previous reminder is currently playing.
     if db.PreventOverlappingLoopSounds
-        and activeLoopSoundSpellID == spellID
-        and activeLoopSoundHandle then
+        and activeLoopPlaybackSpellID == spellID then
+        return
+    end
+
+    local spellName = C_Spell.GetSpellName(spellID)
+
+    if not spellName or issecretvalue(spellName) then
+        DebugPrint("QueueLoopedAlert", "SpellName is secret")
         return
     end
 
@@ -726,7 +878,7 @@ local function QueueLoopedAlert(
     table.insert(pendingLoopAlerts, pending)
 
     -- If the queue is free this will play immediately.
-    -- Otherwise it waits for SOUNDKIT_FINISHED.
+    -- Otherwise it waits for the active playback completion event.
     ProcessPendingLoopAlerts()
 end
 
@@ -759,12 +911,17 @@ local function StopAllLoops()
     wipe(activeLoops)
     wipe(pendingLoopAlerts)
     wipe(queuedLoopAlerts)
+
+    activeLoopPlaybackType = nil
+    activeLoopSoundHandle = nil
+    activeLoopPlaybackSpellID = nil
+    activeLoopTTSUtteranceID = nil
+    waitingForLoopTTSRequest = false
 end
 
 local function CreateSound(cooldownID,
                            spellID,
                            cooldownItem,
-                           spellName,
                            alert,
                            soundSubType)
     local settings = GetAlertSettings(cooldownID, alert)
@@ -782,7 +939,6 @@ local function CreateSound(cooldownID,
             QueueLoopedAlert(
                 spellID,
                 cooldownItem,
-                spellName,
                 alert,
                 soundSubType
             )
@@ -793,7 +949,6 @@ end
 local function NoOp()
     -- noOperation function
 end
-
 local function RaceConditionCleanup()
     if not UnitAffectingCombat("player") then
         return
@@ -806,6 +961,12 @@ local function RaceConditionCleanup()
         end
     end
 end
+
+local function PeriodicCleanup()
+    RaceConditionCleanup()
+    CleanCurrentFlightRecorder()
+end
+
 
 local function RaceConditionCheck(spellID)
     local suppressionTime = raceConditionList[spellID]
@@ -820,7 +981,7 @@ local function RaceConditionCheck(spellID)
 end
 
 -- CDM alert handling functions
-local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
+local function OnAvailable(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
@@ -835,23 +996,23 @@ local function OnAvailable(cooldownItem, spellName, alert, soundSubType)
         end
     end
     if RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
 
-local function OnPandemicTime(cooldownItem, spellName, alert, soundSubType)
+local function OnPandemicTime(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
 
-local function OnCooldown(cooldownItem, spellName, alert, soundSubType)
+local function OnCooldown(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
@@ -866,11 +1027,11 @@ local function OnCooldown(cooldownItem, spellName, alert, soundSubType)
         end
     end
     if RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
-local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
+local function OnChargeGained(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
@@ -879,28 +1040,29 @@ local function OnChargeGained(cooldownItem, spellName, alert, soundSubType)
     if not chargeInfo then
         return
     end
+
     if not chargeInfo.isActive and RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
-local function OnAuraApplied(cooldownItem, spellName, alert, soundSubType)
+local function OnAuraApplied(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
-local function OnAuraRemoved(cooldownItem, spellName, alert, soundSubType)
+local function OnAuraRemoved(cooldownItem, _, alert, soundSubType)
     local spellID, cooldownID = SafeFetchIDs(cooldownItem)
     if not spellID or not cooldownID then
         return
     end
     if RaceConditionCheck(spellID) then
-        CreateSound(cooldownID, spellID, cooldownItem, spellName, alert, soundSubType)
+        CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
 end
 
@@ -932,8 +1094,9 @@ local function OnLoopSoundFinished(soundHandle)
         return
     end
 
+    activeLoopPlaybackType = nil
     activeLoopSoundHandle = nil
-    activeLoopSoundSpellID = nil
+    activeLoopPlaybackSpellID = nil
 
     -- Immediately service the next queued reminder.
     ProcessPendingLoopAlerts()
@@ -955,11 +1118,6 @@ local CDM_EVENT_HANDLERS = {
 -- Hooked handler
 
 local function OnCDMAlertEvent(cooldownItem, spellName, alert, soundSubType)
-    -- Prevent our own repeated alert from re-entering the handler
-    if replayingAlert then
-        return
-    end
-
     DebugPrint(
         "OnCDMAlertEvent",
         "cooldownItem:", issecretvalue(cooldownItem) and "<secret>" or cooldownItem,
@@ -1028,6 +1186,13 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
 
     db = LooperDB
 
+    if flightRecorderEnabled and EventRegistry then
+        EventRegistry:RegisterCallback(
+            "BugGrabber.BugGrabbed",
+            OnBugGrabbed
+        )
+    end
+
     CleanupEmptyAlertSettings()
 
     InitializeCDMLooperAlertUI()
@@ -1095,12 +1260,19 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
                 PrintDebugLog()
                 return
             end
+            if debugCommand == "testerror" then
+                C_Timer.After(0, function()
+                    error(ADDON_NAME .. " synthetic flight recorder test")
+                end)
+                return
+            end
 
             print(ADDON_NAME, "debug commands")
             print("/cdml debug switch")
             print("/cdml debug clear")
             print("/cdml debug alert")
             print("/cdml debug print")
+            print("/cdml debug testerror")
             print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
             print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
             return
@@ -1131,9 +1303,61 @@ local function OnCombatStart()
     if not raceConditionCleanupTicker then
         raceConditionCleanupTicker = C_Timer.NewTicker(
             60,
-            RaceConditionCleanup
+            PeriodicCleanup
         )
     end
+end
+
+local function OnLoopTTSStarted(utteranceID)
+    if activeLoopPlaybackType ~= "tts"
+        or utteranceID ~= activeLoopTTSUtteranceID then
+        return
+    end
+
+    DebugPrint("Our TTS started:", utteranceID)
+end
+
+local function OnLoopTTSFinished(utteranceID)
+    if activeLoopPlaybackType ~= "tts"
+        or utteranceID ~= activeLoopTTSUtteranceID then
+        return
+    end
+
+    activeLoopTTSUtteranceID = nil
+    waitingForLoopTTSRequest = false
+    activeLoopPlaybackType = nil
+    activeLoopPlaybackSpellID = nil
+
+    ProcessPendingLoopAlerts()
+end
+
+local function OnLoopTTSFailed(utteranceID, status)
+    if activeLoopPlaybackType ~= "tts"
+        or utteranceID ~= activeLoopTTSUtteranceID then
+        return
+    end
+
+    DebugPrint(
+        "OnLoopTTSFailed",
+        "utteranceID:", utteranceID,
+        "status:", status
+    )
+
+    activeLoopTTSUtteranceID = nil
+    waitingForLoopTTSRequest = false
+    activeLoopPlaybackType = nil
+    activeLoopPlaybackSpellID = nil
+
+    ProcessPendingLoopAlerts()
+end
+
+local function OnLoopTTSSpeakTextUpdate(status, utteranceID)
+    if activeLoopPlaybackType ~= "tts"
+        or not waitingForLoopTTSRequest then
+        return
+    end
+
+    activeLoopTTSUtteranceID = utteranceID
 end
 
 local RUNTIME_EVENT_HANDLERS = {
@@ -1141,6 +1365,10 @@ local RUNTIME_EVENT_HANDLERS = {
     ["PLAYER_REGEN_DISABLED"] = OnCombatStart,
     ["PLAYER_REGEN_ENABLED"] = OnCombatEnd,
     ["SOUNDKIT_FINISHED"] = OnLoopSoundFinished,
+    ["VOICE_CHAT_TTS_PLAYBACK_STARTED"] = OnLoopTTSStarted,
+    ["VOICE_CHAT_TTS_PLAYBACK_FINISHED"] = OnLoopTTSFinished,
+    ["VOICE_CHAT_TTS_PLAYBACK_FAILED"] = OnLoopTTSFailed,
+    ["VOICE_CHAT_TTS_SPEAK_TEXT_UPDATE"] = OnLoopTTSSpeakTextUpdate,
 }
 
 local runtimeFrame = CreateFrame("Frame")
@@ -1153,6 +1381,10 @@ runtimeFrame:RegisterUnitEvent(
 runtimeFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 runtimeFrame:RegisterEvent("SOUNDKIT_FINISHED")
 runtimeFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+runtimeFrame:RegisterEvent("VOICE_CHAT_TTS_PLAYBACK_FINISHED")
+runtimeFrame:RegisterEvent("VOICE_CHAT_TTS_PLAYBACK_FAILED")
+runtimeFrame:RegisterEvent("VOICE_CHAT_TTS_PLAYBACK_STARTED")
+runtimeFrame:RegisterEvent("VOICE_CHAT_TTS_SPEAK_TEXT_UPDATE")
 
 runtimeFrame:SetScript("OnEvent", function(_, event, ...)
     local handler = RUNTIME_EVENT_HANDLERS[event] or NoOp
