@@ -760,6 +760,7 @@ local function PlayQueuedLoopAlert(pending)
             activeLoopPlaybackType = "tts"
             activeLoopSoundHandle = nil
             activeLoopPlaybackSpellID = pending.spellID
+            activeLoopTTSUtteranceID = nil
             waitingForLoopTTSRequest = true
         end
 
@@ -773,7 +774,15 @@ local function PlayQueuedLoopAlert(pending)
 
         waitingForLoopTTSRequest = false
 
-        success = true
+        if db.PreventOverlappingLoopSounds
+            and not activeLoopTTSUtteranceID then
+            activeLoopPlaybackType = nil
+            activeLoopPlaybackSpellID = nil
+            success = false
+        else
+            success = true
+        end
+
     else
         local soundKit =
             CooldownViewerAlert_GetPayloadContextData(pending.alert)
@@ -869,7 +878,7 @@ local function QueueLoopedAlert(
     table.insert(pendingLoopAlerts, pending)
 
     -- If the queue is free this will play immediately.
-    -- Otherwise it waits for SOUNDKIT_FINISHED.
+    -- Otherwise it waits for the active playback completion event.
     ProcessPendingLoopAlerts()
 end
 
@@ -1109,7 +1118,6 @@ local CDM_EVENT_HANDLERS = {
 -- Hooked handler
 
 local function OnCDMAlertEvent(cooldownItem, spellName, alert, soundSubType)
-
     DebugPrint(
         "OnCDMAlertEvent",
         "cooldownItem:", issecretvalue(cooldownItem) and "<secret>" or cooldownItem,
@@ -1324,13 +1332,8 @@ local function OnLoopTTSFinished(utteranceID)
 end
 
 local function OnLoopTTSFailed(utteranceID, status)
-    if activeLoopPlaybackType ~= "tts" then
-        return
-    end
-
-    -- If STARTED already gave us an ID, only react to our own utterance.
-    if activeLoopTTSUtteranceID
-        and utteranceID ~= activeLoopTTSUtteranceID then
+    if activeLoopPlaybackType ~= "tts"
+        or utteranceID ~= activeLoopTTSUtteranceID then
         return
     end
 
@@ -1349,7 +1352,7 @@ local function OnLoopTTSFailed(utteranceID, status)
 end
 
 local function OnLoopTTSSpeakTextUpdate(status, utteranceID)
-      if activeLoopPlaybackType ~= "tts"
+    if activeLoopPlaybackType ~= "tts"
         or not waitingForLoopTTSRequest then
         return
     end
