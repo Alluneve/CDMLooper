@@ -38,16 +38,137 @@ local currentOriginalAlertKey
 
 local layoutManagerHooksInitialized = false
 
--- Debug helper
+-- debug and flight recorder
 
-local debugLog = {}
+local flightRecorderEnabled = BugGrabber ~= nil
+local currentFlightRecorder = {}
+
+local FLIGHT_RECORDER_CAPTURE_SECONDS = 60
+local FLIGHT_RECORDER_POST_TRIGGER_SECONDS = 10
+
+local flightRecorderTriggered = false
+local flightRecorderTriggeredTime = nil
+
+local function RecordFlightEvent(...)
+    if not flightRecorderEnabled then
+        return
+    end
+
+    table.insert(currentFlightRecorder, {
+        timestamp = GetTimePreciseSec(),
+        n = select("#", ...),
+        ...
+    })
+end
+
+local function StoreFlightRecorder()
+    if not flightRecorderEnabled then
+        return
+    end
+
+    local lines = {
+        string.format(
+            "%s Flight Recorder - triggered at %.3f",
+            ADDON_NAME,
+            flightRecorderTriggeredTime
+        )
+    }
+
+    for i, entry in ipairs(currentFlightRecorder) do
+        local values = {}
+
+        for j = 1, entry.n do
+            local value = entry[j]
+
+            if issecretvalue and issecretvalue(value) then
+                values[j] = "<secret>"
+            else
+                values[j] = tostring(value)
+            end
+        end
+
+        table.insert(lines, string.format(
+            "%.3f [%d] %s",
+            entry.timestamp,
+            i,
+            table.concat(values, " ")
+        ))
+    end
+
+    BugGrabber:StoreError({
+        message = table.concat(lines, "\n"),
+        session = BugGrabber:GetSessionId(),
+        time = date("%Y/%m/%d %H:%M:%S"),
+        counter = 1,
+    })
+end
+
+local function FlushCurrentFlightRecorder()
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    flightRecorderTriggered = true
+    flightRecorderTriggeredTime = GetTimePreciseSec()
+
+    C_Timer.After(FLIGHT_RECORDER_POST_TRIGGER_SECONDS, function()
+        StoreFlightRecorder()
+
+        currentFlightRecorder = {}
+        flightRecorderTriggered = false
+        flightRecorderTriggeredTime = nil
+    end)
+end
+
+local function CleanCurrentFlightRecorder()
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    local cutoff =
+        GetTimePreciseSec() - FLIGHT_RECORDER_CAPTURE_SECONDS
+
+    while currentFlightRecorder[1]
+        and currentFlightRecorder[1].timestamp < cutoff
+    do
+        table.remove(currentFlightRecorder, 1)
+    end
+end
+
+local function OnBugGrabbed(_, errorID)
+    if not flightRecorderEnabled or flightRecorderTriggered then
+        return
+    end
+
+    local errorObject = BugGrabber:GetErrorByID(errorID)
+
+    if not errorObject then
+        return
+    end
+
+    local message = errorObject.message
+
+    if type(message) ~= "string" then
+        return
+    end
+
+    if issecretvalue and issecretvalue(message) then
+        return
+    end
+
+    if string.find(message, ADDON_NAME, 1, true) then
+        FlushCurrentFlightRecorder()
+    end
+end
 
 local function DebugPrint(...)
+    RecordFlightEvent(...)
     if db.DebugPrintSwitch then
         print(...)
     end
 end
 
+local debugLog = {}
 local function DebugLog(...)
     if db.DebugLogSwitch then
         table.insert(debugLog, {
@@ -793,7 +914,6 @@ end
 local function NoOp()
     -- noOperation function
 end
-
 local function RaceConditionCleanup()
     if not UnitAffectingCombat("player") then
         return
@@ -806,6 +926,12 @@ local function RaceConditionCleanup()
         end
     end
 end
+
+local function PeriodicCleanup()
+    RaceConditionCleanup()
+    CleanCurrentFlightRecorder()
+end
+
 
 local function RaceConditionCheck(spellID)
     local suppressionTime = raceConditionList[spellID]
@@ -1028,6 +1154,13 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
 
     db = LooperDB
 
+    if flightRecorderEnabled and EventRegistry then
+        EventRegistry:RegisterCallback(
+            "BugGrabber.BugGrabbed",
+            OnBugGrabbed
+        )
+    end
+
     CleanupEmptyAlertSettings()
 
     InitializeCDMLooperAlertUI()
@@ -1095,12 +1228,19 @@ loadFrame:SetScript("OnEvent", function(_, _, loadedAddon)
                 PrintDebugLog()
                 return
             end
+            if debugCommand == "testerror" then
+                C_Timer.After(0, function()
+                    error(ADDON_NAME .. " synthetic flight recorder test")
+                end)
+                return
+            end
 
             print(ADDON_NAME, "debug commands")
             print("/cdml debug switch")
             print("/cdml debug clear")
             print("/cdml debug alert")
             print("/cdml debug print")
+            print("/cdml debug testerror")
             print("Debug print switch is: " .. (db.DebugPrintSwitch and "on" or "off"))
             print("Debug log switch is: " .. (db.DebugLogSwitch and "on" or "off"))
             return
@@ -1131,7 +1271,7 @@ local function OnCombatStart()
     if not raceConditionCleanupTicker then
         raceConditionCleanupTicker = C_Timer.NewTicker(
             60,
-            RaceConditionCleanup
+            PeriodicCleanup
         )
     end
 end
