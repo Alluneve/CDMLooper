@@ -750,9 +750,10 @@ local function PlayQueuedLoopAlert(pending)
     local success = false
 
     if payload == Enum.CooldownViewerSound.TextToSpeech then
-        local voice = TextToSpeechFrame_GetSpeakerVoiceForMessageType(nil)
+        local voiceID =
+            C_TTSSettings.GetVoiceOptionID(Enum.TtsVoiceType.Standard)
 
-        if not voice or not voice.voiceID then
+        if not voiceID then
             return false
         end
 
@@ -765,7 +766,7 @@ local function PlayQueuedLoopAlert(pending)
         end
 
         C_VoiceChat.SpeakText(
-            voice.voiceID,
+            voiceID,
             pending.spellName,
             C_TTSSettings.GetSpeechRate(),
             C_TTSSettings.GetSpeechVolume(),
@@ -782,7 +783,6 @@ local function PlayQueuedLoopAlert(pending)
         else
             success = true
         end
-
     else
         local soundKit =
             CooldownViewerAlert_GetPayloadContextData(pending.alert)
