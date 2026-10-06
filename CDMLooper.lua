@@ -995,6 +995,13 @@ local function OnAvailable(cooldownItem, _, alert, soundSubType)
             return
         end
     end
+    
+    local chargeInfo = C_Spell.GetSpellCharges(spellID)
+    if chargeInfo and chargeInfo.isActive then
+        DebugPrint("OnAvailable", "Spell is still actively charging, quick returning")
+        return
+    end
+
     if RaceConditionCheck(spellID) then
         CreateSound(cooldownID, spellID, cooldownItem, alert, soundSubType)
     end
@@ -1118,6 +1125,11 @@ local CDM_EVENT_HANDLERS = {
 -- Hooked handler
 
 local function OnCDMAlertEvent(cooldownItem, spellName, alert, soundSubType)
+    if not cooldownItem then
+        DebugPrint("OnCDMAlertEvent", "cooldownItem is nil, quick returning")
+        return
+    end
+
     DebugPrint(
         "OnCDMAlertEvent",
         "cooldownItem:", issecretvalue(cooldownItem) and "<secret>" or cooldownItem,
