@@ -11,10 +11,10 @@
 ## DefaultState: enabled
 ## X-Curse-Project-ID: 1699747
 
-SettingsHandler.lua
-Playback.lua
-Alerts.lua
+module\SettingsHandler.lua
+module\Playback.lua
+module\Alerts.lua
 
-UI\Settings.lua
+module\UI\Settings.lua
 
-CDMLooper-Core.lua
+CDMLooper.lua
