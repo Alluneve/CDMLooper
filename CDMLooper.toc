@@ -1,5 +1,5 @@
 ## Interface: 120100
-## Title: CDMLooper-Core
+## Title: CDMLooper
 ## Notes: Small addon to loop CDM Alerts
 ## Author: Alluneve
 ## Version: 1.1.0
