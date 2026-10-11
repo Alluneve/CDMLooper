@@ -1,0 +1,15 @@
+## Interface: 120100
+## Title: CDMLooper-Debug
+## Notes: Optional debugging suite for CDMLooper
+## Author: Alluneve
+## Version: 1.1.0
+## Dependencies: CDMLooper-Core, !BugGrabber
+## LoadOnDemand: 1
+## LoadWith: CDMLooper-Core
+## DefaultState: disabled
+## SavedVariables: LooperDebugDB
+
+Debug.lua
+FlightRecorder.lua
+
+CDMLooper-Debug.lua
