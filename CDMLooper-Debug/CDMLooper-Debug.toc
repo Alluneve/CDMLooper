@@ -8,6 +8,7 @@
 ## LoadWith: CDMLooper-Core
 ## DefaultState: disabled
 ## SavedVariables: LooperDebugDB
+## AllowAddOnTableAccess: 1
 
 Debug.lua
 FlightRecorder.lua

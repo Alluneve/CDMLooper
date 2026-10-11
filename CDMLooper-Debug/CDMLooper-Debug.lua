@@ -2,6 +2,11 @@ local ADDON_NAME, private = ...
 
 local Debug = private.Debug
 local FlightRecorder = private.FlightRecorder
+local CORE_ADDON_NAME = C_AddOns.GetAddOnMetadata(ADDON_NAME, "X-CoreAddon")
+
+-- Keep internal modules private to the orchestrator
+private.Debug = nil
+private.FlightRecorder = nil
 
 -- Business Logic --
 
@@ -22,7 +27,8 @@ local function OnBugGrabbed(_, errorID)
         return
     end
 
-    if string.find(message, ADDON_NAME, 1, true) then
+    if string.find(message, CORE_ADDON_NAME, 1, true)
+        or string.find(message, ADDON_NAME, 1, true) then
         FlightRecorder.Trigger()
     end
 end
@@ -76,3 +82,23 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         OnCombatEnd()
     end
 end)
+
+-- Public Interfaces --
+
+local API = {}
+
+function API.Print(...)
+    Debug.Print(...)
+end
+
+function API.Log(...)
+    Debug.Log(...)
+end
+
+function API.SubmitLog()
+    Debug.PrintLog()
+end
+
+-- Other public methods...
+
+private.API = API
