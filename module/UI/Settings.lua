@@ -31,6 +31,25 @@ local overwriteExistingExports = false
 
 -- Implementation --
 
+-- Tooltip Helpers --
+
+local function AddHelpTooltip(frame, title, description)
+    frame:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title, 1, 0.82, 0)
+        GameTooltip:AddLine(
+            description,
+            1, 1, 1,
+            true
+        )
+        GameTooltip:Show()
+    end)
+
+    frame:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
 -- General CDMLooper Settings --
 
 local function InitializeCDMLooperSettingsBlock()
@@ -66,7 +85,7 @@ local function InitializeCDMLooperSettingsBlock()
     )
 
     looperSettingsBlock:SetWidth(344)
-    looperSettingsBlock:SetHeight(145)
+    looperSettingsBlock:SetHeight(180)
     looperSettingsBlock:SetPoint(
         "TOPLEFT",
         lastCategory,
@@ -122,6 +141,29 @@ local function InitializeCDMLooperSettingsBlock()
         playback.SetPreventOverlappingLoopSounds(enabled)
     end)
 
+    AddHelpTooltip(
+        overlapCheckBox,
+        "Prevent overlapping loop sounds",
+        "Wait for the currently playing loop sound or text-to-speech to finish before playing another queued loop alert."
+    )
+
+    -- Import / Export section header.
+    local transferHeader = looperSettingsBlock:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontNormal"
+    )
+
+    transferHeader:SetPoint(
+        "TOPLEFT",
+        overlapCheckBox,
+        "BOTTOMLEFT",
+        0,
+        -10
+    )
+
+    transferHeader:SetText("Import / Export")
+
     -- Import character settings from account-wide storage.
     local importButton = CreateFrame(
         "Button",
@@ -133,10 +175,10 @@ local function InitializeCDMLooperSettingsBlock()
     importButton:SetSize(145, 26)
     importButton:SetPoint(
         "TOPLEFT",
-        overlapCheckBox,
+        transferHeader,
         "BOTTOMLEFT",
         0,
-        -10
+        -8
     )
     importButton:SetText("Import")
 
@@ -152,6 +194,12 @@ local function InitializeCDMLooperSettingsBlock()
             0.3, 1, 0.3
         )
     end)
+
+    AddHelpTooltip(
+        importButton,
+        "Import Settings",
+        "Move account-wide exported CDMLooper settings for your current class into this character. Existing matching character settings are always overwritten. Successfully imported entries are removed from account-wide exports."
+    )
 
     -- Export character settings to account-wide storage.
     local exportButton = CreateFrame(
@@ -197,6 +245,12 @@ local function InitializeCDMLooperSettingsBlock()
         overwriteExistingExports = self:GetChecked()
     end)
 
+    AddHelpTooltip(
+        overwriteCheckBox,
+        "Overwrite Existing Exports",
+        "When enabled, exporting replaces matching settings already stored account-wide. When disabled, matching entries are skipped. This option does not affect importing."
+    )
+
     exportButton:SetScript("OnClick", function()
         local exported, skipped = settingsHandler.Export(
             overwriteExistingExports
@@ -212,17 +266,24 @@ local function InitializeCDMLooperSettingsBlock()
         )
     end)
 
+    AddHelpTooltip(
+        exportButton,
+        "Export Settings",
+        "Copy this character's CDMLooper settings to account-wide storage for the current class. Other characters of the same class can then import them. Existing exports are only overwritten when the checkbox below is enabled."
+    )
+
     -- Collapsible settings category.
     local function UpdateCollapsedState()
         local expanded = not looperSettingsCollapsed
 
         overlapCheckBox:SetShown(expanded)
+        transferHeader:SetShown(expanded)
         importButton:SetShown(expanded)
         exportButton:SetShown(expanded)
         overwriteCheckBox:SetShown(expanded)
 
         looperSettingsBlock:SetHeight(
-            expanded and 145 or 22
+            expanded and 180 or 22
         )
 
         header:UpdateCollapsedState(

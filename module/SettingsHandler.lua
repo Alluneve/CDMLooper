@@ -5,7 +5,6 @@ local database
 local characterDatabase
 local classToken
 
-
 -- Constructor --
 
 ---@param params { database: table, characterDatabase: table, playerClass: string }
@@ -24,7 +23,6 @@ function SettingsHandler.Initialize(params)
     -- Character-specific configuration
     characterDatabase.Alerts = characterDatabase.Alerts or {}
 end
-
 
 private.SettingsHandler = SettingsHandler
 
@@ -228,7 +226,8 @@ local function CountAlertEntries(source, eligibleIDs)
     return count
 end
 
--- Move individual alert entries without overwriting.
+-- Move individual alert entries, always overwriting
+-- matching destination entries.
 -- Successfully moved entries are deleted from the source.
 local function MoveAlertEntries(source, destination, eligibleIDs)
     local imported = 0
@@ -241,7 +240,6 @@ local function MoveAlertEntries(source, destination, eligibleIDs)
     for cooldownID, sourceAlerts in pairs(source) do
         if (not eligibleIDs or eligibleIDs[cooldownID])
             and type(sourceAlerts) == "table" then
-
             local destinationAlerts = destination[cooldownID]
 
             if destinationAlerts == nil then
@@ -252,13 +250,9 @@ local function MoveAlertEntries(source, destination, eligibleIDs)
             if type(destinationAlerts) == "table" then
                 for alertKey, settings in pairs(sourceAlerts) do
                     if type(settings) == "table" then
-                        if destinationAlerts[alertKey] == nil then
-                            destinationAlerts[alertKey] = CopyTable(settings)
-                            sourceAlerts[alertKey] = nil
-                            imported = imported + 1
-                        else
-                            skipped = skipped + 1
-                        end
+                        destinationAlerts[alertKey] = CopyTable(settings)
+                        sourceAlerts[alertKey] = nil
+                        imported = imported + 1
                     end
                 end
             end
@@ -359,6 +353,7 @@ local function FindLegacyEligibleCooldowns()
 
     for categoryName, category in pairs(Enum.CooldownViewerCategory) do
         if type(category) == "number"
+            and category >= 0
             and categoryName ~= "EquipSlotEssential"
             and categoryName ~= "EquipSlotTracked" then
 
@@ -374,7 +369,6 @@ local function FindLegacyEligibleCooldowns()
                 for _, cooldownID in ipairs(cooldownIDs) do
                     if not IsSecret(cooldownID)
                         and database.Alerts[cooldownID] then
-
                         local info =
                             C_CooldownViewer.GetCooldownViewerCooldownInfo(
                                 cooldownID
@@ -392,9 +386,7 @@ local function FindLegacyEligibleCooldowns()
                                 and not IsSecret(buffSlot)
                                 and not IsSecret(spellCategoryID)
                                 and equipSlot == nil
-                                and buffSlot == nil
                                 and spellCategoryID == nil then
-
                                 eligibleIDs[cooldownID] = true
                             end
                         end
@@ -531,13 +523,13 @@ local function ImportFirstTime()
         end
     end
 
-    -- Class-tagged exports take priority.
-    local taggedImported, taggedSkipped = ImportClassAlerts()
-
-    -- Attempt legacy migration only during initial setup.
+    -- Migrate eligible legacy entries first.
     local legacyImported, legacySkipped = MigrateLegacyAlerts(
         eligibleIDs
     )
+
+    -- Class-tagged exports take priority over legacy settings.
+    local taggedImported, taggedSkipped = ImportClassAlerts()
 
     characterDatabase.InitialImportHandled = true
 
