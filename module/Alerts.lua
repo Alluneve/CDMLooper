@@ -32,15 +32,15 @@ local function SafeFetchIDs(cooldownItem)
     local spellID = cooldownItem:GetBaseSpellID()
 
     if issecretvalue(spellID) then
-        debug.Log("SafeFetchIDs", "SpellID is secret")
+        debug.Warn("SafeFetchIDs", "SpellID is secret")
     else
-        debug.Print("SafeFetchIDs", "SpellID:", spellID)
+        debug.Debug("SafeFetchIDs", "SpellID:", spellID)
     end
 
     if issecretvalue(cooldownID) then
-        debug.Log("SafeFetchIDs", "CooldownID is secret")
+        debug.Warn("SafeFetchIDs", "CooldownID is secret")
     else
-        debug.Print("SafeFetchIDs", "CooldownID:", cooldownID)
+        debug.Debug("SafeFetchIDs", "CooldownID:", cooldownID)
     end
 
     if not spellID or issecretvalue(spellID)
@@ -107,7 +107,7 @@ local function OnAvailable(cooldownItem, _, alert, soundSubType)
     local chargeInfo = C_Spell.GetSpellCharges(spellID)
 
     if chargeInfo and chargeInfo.isActive then
-        debug.Print(
+        debug.Info(
             "OnAvailable",
             "Spell is still actively charging, quick returning"
         )
@@ -156,7 +156,7 @@ local function OnCooldown(cooldownItem, _, alert, soundSubType)
             GetInventoryItemCooldown("player", equipSlot)
 
         if start > 0 and duration > 0 then
-            debug.Print(
+            debug.Info(
                 "OnCooldown",
                 "Trinket still on cooldown"
             )
@@ -253,14 +253,14 @@ local function OnCDMAlertEvent(
     soundSubType
 )
     if not cooldownItem then
-        debug.Print(
+        debug.Info(
             "OnCDMAlertEvent",
             "cooldownItem is nil, quick returning"
         )
         return
     end
 
-    debug.Print(
+    debug.Debug(
         "OnCDMAlertEvent",
         "cooldownItem:",
         issecretvalue(cooldownItem) and "<secret>" or cooldownItem,
@@ -291,7 +291,7 @@ local function OnCDMAlertEvent(
         return
     end
 
-    debug.Print(
+    debug.Debug(
         "OnCDMAlertEvent",
         "eventType:",
         eventType
@@ -317,7 +317,7 @@ local function OnSpellFired(spellID)
     end
 
     if issecretvalue(spellID) then
-        debug.Log(
+        debug.Info(
             "OnSpellFired",
             "spellID secret:",
             true,
@@ -326,7 +326,7 @@ local function OnSpellFired(spellID)
         return
     end
 
-    debug.Print("OnSpellFired", "SpellID:", spellID)
+    debug.Debug("OnSpellFired", "SpellID:", spellID)
 
     local baseSpellID = C_Spell.GetBaseSpell(spellID)
 
@@ -334,7 +334,7 @@ local function OnSpellFired(spellID)
         return
     end
 
-    debug.Print(
+    debug.Debug(
         "OnSpellFired",
         "BaseSpellID:",
         baseSpellID

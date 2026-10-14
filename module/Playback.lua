@@ -36,12 +36,12 @@ local function PlayQueuedLoopAlert(pending)
     local payload = CooldownViewerAlert_GetPayload(pending.alert)
 
     if not alertType or issecretvalue(alertType) then
-        debug.Print("PlayQueuedLoopAlert", "AlertType is secret")
+        debug.Warn("PlayQueuedLoopAlert", "AlertType is secret")
         return false
     end
 
     if payload == nil or issecretvalue(payload) then
-        debug.Print("PlayQueuedLoopAlert", "Payload is secret")
+        debug.Warn("PlayQueuedLoopAlert", "Payload is secret")
         return false
     end
 
@@ -90,7 +90,7 @@ local function PlayQueuedLoopAlert(pending)
             CooldownViewerAlert_GetPayloadContextData(pending.alert)
 
         if not soundKit or issecretvalue(soundKit) then
-            debug.Print("PlayQueuedLoopAlert", "SoundKit is secret")
+            debug.Warn("PlayQueuedLoopAlert", "SoundKit is secret")
             return false
         end
 
@@ -145,7 +145,7 @@ local function QueueLoopedAlert(
     soundSubType
 )
     if issecretvalue(spellID) then
-        debug.Log("QueueLoopedAlert", "SpellID is secret")
+        debug.Warn("QueueLoopedAlert", "SpellID is secret")
         return
     end
 
@@ -164,7 +164,7 @@ local function QueueLoopedAlert(
     local spellName = C_Spell.GetSpellName(spellID)
 
     if not spellName or issecretvalue(spellName) then
-        debug.Print("QueueLoopedAlert", "SpellName is secret")
+        debug.Warn("QueueLoopedAlert", "SpellName is secret")
         return
     end
 
@@ -183,7 +183,7 @@ local function QueueLoopedAlert(
 end
 
 local function StopLoop(spellID)
-    debug.Print("StopLoop", "spellID secret:", issecretvalue(spellID))
+    debug.Debug("StopLoop", "spellID secret:", issecretvalue(spellID))
 
     if issecretvalue(spellID) then
         return
@@ -234,7 +234,7 @@ local function CreateSound(
     activeLoops[spellID] = C_Timer.NewTicker(
         settings.interval,
         function()
-            debug.Print("Loop tick", spellID)
+            debug.Debug("Loop tick", spellID)
 
             QueueLoopedAlert(
                 spellID,
@@ -266,7 +266,7 @@ local function OnLoopTTSStarted(utteranceID)
         return
     end
 
-    debug.Print("Our TTS started:", utteranceID)
+    debug.Debug("Our TTS started:", utteranceID)
 end
 
 local function OnLoopTTSFinished(utteranceID)
@@ -289,7 +289,7 @@ local function OnLoopTTSFailed(utteranceID, status)
         return
     end
 
-    debug.Print(
+    debug.Info(
         "OnLoopTTSFailed",
         "utteranceID:", utteranceID,
         "status:", status

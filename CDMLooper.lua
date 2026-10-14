@@ -9,14 +9,18 @@ local SettingsUI = private.SettingsUI
 
 local function NoOp() end
 
+---@type AlluneveDebugAPI
 local debugAPI = Alluneve
     and Alluneve.Debug
-    and Alluneve.Debug.RegisterYourself(ADDON_NAME)
-
-local debugInterface = debugAPI or {
-    Print = NoOp,
-    Log = NoOp,
-}
+    and Alluneve.Debug.RegisterYourself(ADDON_NAME) or {
+        Debug = NoOp,
+        Info = NoOp,
+        Warn = NoOp,
+        Error = NoOp,
+        SubmitLog = NoOp,
+        TogglePrint = NoOp,
+        TriggerRecorder = NoOp
+    }
 
 local initialImportPromptShown = false
 local initialImportRetryCount = 0
@@ -122,17 +126,10 @@ local function HandleDebugCommand(action)
     end
 
     if action == "print" then
-        local enabled = debugAPI.ToggleDebugPrint()
+        local enabled = debugAPI.TogglePrint()
 
         print(
             "CDMLooper: Debug printing "
-            .. (enabled and "enabled." or "disabled.")
-        )
-    elseif action == "log" then
-        local enabled = debugAPI.ToggleDebugLog()
-
-        print(
-            "CDMLooper: Debug logging "
             .. (enabled and "enabled." or "disabled.")
         )
     elseif action == "submit" then
@@ -205,12 +202,12 @@ local function Initialize()
         preventOverlappingLoopSounds =
             SettingsHandler.GetPreventOverlapping(),
         settingsHandler = SettingsHandler,
-        debugInterface = debugInterface,
+        debugInterface = debugAPI,
     })
 
     Alerts.Initialize({
         playback = Playback,
-        debugInterface = debugInterface,
+        debugInterface = debugAPI,
     })
 
     SettingsUI.Initialize({
