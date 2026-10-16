@@ -4,6 +4,7 @@ local SettingsHandler = private.SettingsHandler
 local Playback = private.Playback
 local Alerts = private.Alerts
 local SettingsUI = private.SettingsUI
+local CooldownLookupTable = private.CooldownLookupTableHandler
 
 -- Module Variables --
 
@@ -205,9 +206,14 @@ local function Initialize()
         debugInterface = debugAPI,
     })
 
+    CooldownLookupTable.Initialize({
+        debugInterface = debugAPI
+    })
+
     Alerts.Initialize({
         playback = Playback,
         debugInterface = debugAPI,
+        CooldownLookupTable = CooldownLookupTable
     })
 
     SettingsUI.Initialize({

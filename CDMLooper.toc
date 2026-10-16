@@ -2,7 +2,7 @@
 ## Title: CDMLooper
 ## Notes: Small addon to loop CDM Alerts
 ## Author: Alluneve
-## Version: 1.1.1
+## Version: 1.1.2
 ## SavedVariables: LooperDB
 ## SavedVariablesPerCharacter: LooperProfileDB
 ## Dependencies: Blizzard_CooldownViewer
@@ -11,6 +11,7 @@
 ## DefaultState: enabled
 ## X-Curse-Project-ID: 1699747
 
+module\CooldownLookupTable.lua
 module\SettingsHandler.lua
 module\Playback.lua
 module\Alerts.lua

@@ -3,13 +3,15 @@ local Alerts = {}
 
 local playback
 local debug
+local cooldownLookupTable
 
 -- Constructor --
 
----@param params { playback: table, debugInterface: table }
+---@param params { playback: table, debugInterface: table, CooldownLookupTable: table }
 function Alerts.Initialize(params)
     playback = params.playback
     debug = params.debugInterface
+    cooldownLookupTable = params.CooldownLookupTable
 end
 
 private.Alerts = Alerts
@@ -27,6 +29,11 @@ local raceConditionList = {}
 
 -- Cooldown identification --
 
+---comment
+---@param cooldownItem any
+---@return number? SpellID Cannonical spell ID
+---@return number? CooldownID Ooriginal CDM CooldownID
+---@return number? originalSpellID Original CDM root ID, grabbed through cooldownLookupTable
 local function SafeFetchIDs(cooldownItem)
     local cooldownID = cooldownItem:GetCooldownID()
     local spellID = cooldownItem:GetBaseSpellID()
@@ -45,10 +52,15 @@ local function SafeFetchIDs(cooldownItem)
 
     if not spellID or issecretvalue(spellID)
         or not cooldownID or issecretvalue(cooldownID) then
-        return nil, nil
+        return nil, nil, nil
     end
 
-    return spellID, cooldownID
+    local lookupTableResponse = cooldownLookupTable.fetch(spellID)
+    if lookupTableResponse then
+        return lookupTableResponse, cooldownID, spellID
+    end
+
+    return spellID, cooldownID, spellID
 end
 
 -- Race condition handling --
@@ -84,9 +96,9 @@ end
 -- CDM Alert Event Handlers --
 
 local function OnAvailable(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, originalSpellID = SafeFetchIDs(cooldownItem)
 
-    if not spellID or not cooldownID then
+    if not spellID or not cooldownID or not originalSpellID then
         return
     end
 
@@ -104,7 +116,7 @@ local function OnAvailable(cooldownItem, _, alert, soundSubType)
         end
     end
 
-    local chargeInfo = C_Spell.GetSpellCharges(spellID)
+    local chargeInfo = C_Spell.GetSpellCharges(originalSpellID)
 
     if chargeInfo and chargeInfo.isActive then
         debug.Info(
@@ -126,7 +138,7 @@ local function OnAvailable(cooldownItem, _, alert, soundSubType)
 end
 
 local function OnPandemicTime(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, _ = SafeFetchIDs(cooldownItem)
 
     if not spellID or not cooldownID then
         return
@@ -144,7 +156,7 @@ local function OnPandemicTime(cooldownItem, _, alert, soundSubType)
 end
 
 local function OnCooldown(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, _ = SafeFetchIDs(cooldownItem)
 
     if not spellID or not cooldownID then
         return
@@ -176,13 +188,13 @@ local function OnCooldown(cooldownItem, _, alert, soundSubType)
 end
 
 local function OnChargeGained(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, originalSpellID = SafeFetchIDs(cooldownItem)
 
-    if not spellID or not cooldownID then
+    if not spellID or not cooldownID  or not originalSpellID then
         return
     end
 
-    local chargeInfo = C_Spell.GetSpellCharges(spellID)
+    local chargeInfo = C_Spell.GetSpellCharges(originalSpellID)
 
     if not chargeInfo then
         return
@@ -200,7 +212,7 @@ local function OnChargeGained(cooldownItem, _, alert, soundSubType)
 end
 
 local function OnAuraApplied(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, _ = SafeFetchIDs(cooldownItem)
 
     if not spellID or not cooldownID then
         return
@@ -218,7 +230,7 @@ local function OnAuraApplied(cooldownItem, _, alert, soundSubType)
 end
 
 local function OnAuraRemoved(cooldownItem, _, alert, soundSubType)
-    local spellID, cooldownID = SafeFetchIDs(cooldownItem)
+    local spellID, cooldownID, _ = SafeFetchIDs(cooldownItem)
 
     if not spellID or not cooldownID then
         return
@@ -334,9 +346,14 @@ local function OnSpellFired(spellID)
         return
     end
 
+    local cooldownLookupTableResult = cooldownLookupTable.fetch(baseSpellID)
+    if cooldownLookupTableResult then
+        baseSpellID = cooldownLookupTableResult
+    end
+
     debug.Debug(
         "OnSpellFired",
-        "BaseSpellID:",
+        "CannonicalSpellID:",
         baseSpellID
     )
 
