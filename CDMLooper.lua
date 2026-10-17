@@ -118,13 +118,6 @@ end
 -- Slash Commands --
 
 local function HandleDebugCommand(action)
-    if not debugAPI then
-        print(
-            "CDMLooper: Debug addon is not loaded. "
-            .. "Enable Alluneve-Debug and reload."
-        )
-        return
-    end
 
     if action == "print" then
         local enabled = debugAPI.TogglePrint()

@@ -108,7 +108,7 @@ local function OnAvailable(cooldownItem, _, alert, soundSubType)
             GetInventoryItemCooldown("player", equipSlot)
 
         if start > 0 and duration > 0 then
-            debug.Print(
+            debug.Debug(
                 "OnAvailable",
                 "Trinket still on cooldown"
             )

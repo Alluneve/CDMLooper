@@ -2,7 +2,7 @@
 ## Title: CDMLooper
 ## Notes: Small addon to loop CDM Alerts
 ## Author: Alluneve
-## Version: 1.1.2
+## Version: 1.1.3
 ## SavedVariables: LooperDB
 ## SavedVariablesPerCharacter: LooperProfileDB
 ## Dependencies: Blizzard_CooldownViewer
